@@ -1,509 +1,103 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebAR MindAR Project - Fixed</title>
-
-  <!-- Three.js compatible version -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
-
-  <!-- MindAR Image Three.js -->
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
-
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: 'Arial', sans-serif;
-      overflow: hidden;
-      background: #000;
-    }
-
-    #loading {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      font-size: 18px;
-      z-index: 1000;
-    }
-
-    .loading-spinner {
-      border: 4px solid rgba(255, 255, 255, 0.3);
-      border-top: 4px solid #ffffff;
-      border-radius: 50%;
-      width: 50px;
-      height: 50px;
-      animation: spin 1s linear infinite;
-      margin-bottom: 20px;
-    }
-
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-
-    #instructions {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      background: rgba(0, 0, 0, 0.8);
-      backdrop-filter: blur(10px);
-      color: white;
-      padding: 15px 20px;
-      border-radius: 15px;
-      font-size: 14px;
-      max-width: 320px;
-      z-index: 999;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    }
-
-    #status {
-      position: fixed;
-      bottom: 20px;
-      left: 20px;
-      background: rgba(0, 0, 0, 0.8);
-      backdrop-filter: blur(10px);
-      color: white;
-      padding: 10px 15px;
-      border-radius: 10px;
-      font-size: 12px;
-      z-index: 999;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-
-    #countdown {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: linear-gradient(135deg, #ff6b6b, #ee5a24);
-      color: white;
-      padding: 0;
-      border-radius: 50%;
-      font-size: 28px;
-      font-weight: bold;
-      display: none;
-      z-index: 998;
-      width: 80px;
-      height: 80px;
-      text-align: center;
-      line-height: 80px;
-      box-shadow: 0 8px 32px rgba(238, 90, 36, 0.4);
-      border: 3px solid rgba(255, 255, 255, 0.3);
-      animation: pulse 1s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0% { transform: translate(-50%, -50%) scale(1); }
-      50% { transform: translate(-50%, -50%) scale(1.05); }
-      100% { transform: translate(-50%, -50%) scale(1); }
-    }
-
-    #ar-container {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-    }
-
-    .error-content {
-      text-align: center;
-      max-width: 500px;
-      padding: 20px;
-    }
-
-    .error-content h3 {
-      margin-bottom: 20px;
-      color: #ff6b6b;
-    }
-
-    .error-content ul {
-      text-align: left;
-      margin: 15px 0;
-    }
-
-    .error-content li {
-      margin: 8px 0;
-      padding-left: 10px;
-    }
-
-    .demo-mode {
-      background: rgba(52, 152, 219, 0.8);
-      color: white;
-      padding: 10px 15px;
-      border-radius: 10px;
-      margin-top: 20px;
-      cursor: pointer;
-      border: none;
-      font-size: 16px;
-      transition: background 0.3s ease;
-    }
-
-    .demo-mode:hover {
-      background: rgba(52, 152, 219, 1);
-    }
-  </style>
-</head>
-<body>
-  <div id="loading">
-    <div class="loading-spinner"></div>
-    <div>Initializing WebAR...</div>
-  </div>
-
-  <div id="instructions">
-    <strong>🎯 AR Instructions:</strong><br>
-    • Point camera at any printed image or QR code<br>
-    • Keep device steady when target is detected<br>
-    • 10-second countdown will start automatically<br>
-    • You'll be redirected to Google after countdown
-  </div>
-
-  <div id="status">Status: Initializing...</div>
-
-  <div id="countdown"></div>
-
-  <div id="ar-container"></div>
-
-  <script>
-    let mindarThree, scene, camera, renderer;
-    let anchor, model;
-    let isTargetFound = false;
-    let countdownStarted = false;
-    let countdownTimer;
-    let statusElement;
-
-    // Update status display
-    function updateStatus(message) {
-      if (!statusElement) {
-        statusElement = document.getElementById('status');
-      }
-      if (statusElement) {
-        statusElement.textContent = `Status: ${message}`;
-      }
-      console.log(`Status: ${message}`);
-    }
-
-    // Initialize the AR application
-    async function initAR() {
-      try {
-        updateStatus("Setting up camera...");
-
-        // Check if MindAR is available
-        if (typeof window.MINDAR === 'undefined') {
-          throw new Error('MindAR library failed to load');
-        }
-
-        // Create a simple target for demo (you can replace this with your own targets.mind file)
-        const demoTarget = createDemoTarget();
-        
-        // Create MindAR instance
-        mindarThree = new window.MINDAR.IMAGE.MindARThree({
-          container: document.getElementById('ar-container'),
-          imageTargetSrc: demoTarget, // Using demo target
-          uiLoading: false,
-          uiScanning: false,
-          uiError: false,
-          maxTrack: 1,
-          filterMinCF: 0.0001,
-          filterBeta: 0.001,
-          warmupTolerance: 5,
-          missTolerance: 5
-        });
-
-        updateStatus("Initializing AR components...");
-
-        // Get Three.js components
-        const { renderer: arRenderer, scene: arScene, camera: arCamera } = mindarThree;
-        renderer = arRenderer;
-        scene = arScene;
-        camera = arCamera;
-
-        // Improve renderer settings for better performance
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-        // Add lights
-        setupLighting();
-
-        // Create anchor group
-        anchor = mindarThree.addAnchor(0);
-
-        // Create 3D model
-        createModel();
-
-        // Set up event listeners
-        setupEventListeners();
-
-        updateStatus("Starting camera...");
-
-        // Start AR
-        await mindarThree.start();
-
-        // Hide loading screen
-        document.getElementById('loading').style.display = 'none';
-
-        updateStatus("Ready - Point camera at target");
-
-        console.log("WebAR initialized successfully!");
-
-      } catch (error) {
-        console.error("Error initializing AR:", error);
-        showError(error);
-      }
-    }
-
-    function createDemoTarget() {
-      // Create a simple base64 encoded .mind file for demo purposes
-      // In production, you would load your actual targets.mind file
-      return 'data:application/octet-stream;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJaQAA3AA/v3AgAA=';
-    }
-
-    function setupLighting() {
-      // Ambient light for overall illumination
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-      scene.add(ambientLight);
-
-      // Directional light for shadows and definition
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      directionalLight.position.set(5, 5, 5);
-      directionalLight.castShadow = true;
-      directionalLight.shadow.mapSize.width = 2048;
-      directionalLight.shadow.mapSize.height = 2048;
-      scene.add(directionalLight);
-
-      // Point light for dynamic lighting
-      const pointLight = new THREE.PointLight(0x64b5f6, 0.5);
-      pointLight.position.set(0, 2, 1);
-      scene.add(pointLight);
-    }
-
-    function createModel() {
-      // Create a more interesting 3D model
-      const group = new THREE.Group();
-
-      // Main cube with different colored faces
-      const geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-      const materials = [
-        new THREE.MeshPhongMaterial({ color: 0xff4757 }), // Red
-        new THREE.MeshPhongMaterial({ color: 0x2ed573 }), // Green
-        new THREE.MeshPhongMaterial({ color: 0x3742fa }), // Blue
-        new THREE.MeshPhongMaterial({ color: 0xffa502 }), // Orange
-        new THREE.MeshPhongMaterial({ color: 0xff6348 }), // Pink
-        new THREE.MeshPhongMaterial({ color: 0x7bed9f })  // Light Green
-      ];
-
-      const mainCube = new THREE.Mesh(geometry, materials);
-      mainCube.castShadow = true;
-      mainCube.receiveShadow = true;
-      group.add(mainCube);
-
-      // Add smaller orbiting cubes
-      for (let i = 0; i < 4; i++) {
-        const smallGeometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-        const smallMaterial = new THREE.MeshPhongMaterial({ 
-          color: new THREE.Color().setHSL(i / 4, 0.8, 0.6),
-          transparent: true,
-          opacity: 0.8
-        });
-        
-        const smallCube = new THREE.Mesh(smallGeometry, smallMaterial);
-        const angle = (i / 4) * Math.PI * 2;
-        smallCube.position.set(
-          Math.cos(angle) * 1.5,
-          Math.sin(i * 0.5) * 0.5,
-          Math.sin(angle) * 1.5
-        );
-        smallCube.castShadow = true;
-        group.add(smallCube);
-      }
-
-      model = group;
-      model.scale.set(0.6, 0.6, 0.6);
-      model.position.set(0, 0, 0);
-
-      anchor.group.add(model);
-
-      // Start animation
-      animate();
-    }
-
-    function setupEventListeners() {
-      // Target found event
-      anchor.onTargetFound = () => {
-        console.log("🎯 Target detected!");
-        isTargetFound = true;
-        updateStatus("Target detected! Model visible");
-        
-        if (!countdownStarted) {
-          startCountdown();
-          countdownStarted = true;
-        }
-      };
-
-      // Target lost event
-      anchor.onTargetLost = () => {
-        console.log("❌ Target lost!");
-        isTargetFound = false;
-        updateStatus("Target lost - Point camera at target");
-        stopCountdown();
-      };
-    }
-
-    function animate() {
-      requestAnimationFrame(animate);
-
-      if (model && isTargetFound) {
-        // Main cube rotation
-        const mainCube = model.children[0];
-        if (mainCube) {
-          mainCube.rotation.x += 0.015;
-          mainCube.rotation.y += 0.02;
-          mainCube.rotation.z += 0.01;
-
-          // Floating animation
-          mainCube.position.y = Math.sin(Date.now() * 0.003) * 0.15;
-        }
-
-        // Orbiting small cubes
-        for (let i = 1; i < model.children.length; i++) {
-          const smallCube = model.children[i];
-          const time = Date.now() * 0.002;
-          const angle = (i - 1) / 4 * Math.PI * 2 + time;
-          
-          smallCube.position.x = Math.cos(angle) * 1.5;
-          smallCube.position.z = Math.sin(angle) * 1.5;
-          smallCube.position.y = Math.sin(time + i) * 0.3;
-          
-          smallCube.rotation.x += 0.02;
-          smallCube.rotation.y += 0.03;
-        }
-      }
-    }
-
-    function startCountdown() {
-      let count = 10;
-      const countdownElement = document.getElementById('countdown');
-      countdownElement.style.display = 'block';
-      countdownElement.textContent = count;
-
-      updateStatus(`Redirecting in ${count} seconds...`);
-
-      countdownTimer = setInterval(() => {
-        count--;
-        countdownElement.textContent = count;
-        updateStatus(`Redirecting in ${count} seconds...`);
-
-        // Change color as countdown progresses
-        if (count <= 3) {
-          countdownElement.style.background = 'linear-gradient(135deg, #ff3838, #ff1744)';
-        } else if (count <= 5) {
-          countdownElement.style.background = 'linear-gradient(135deg, #ff9500, #ff6b00)';
-        }
-
-        if (count <= 0) {
-          clearInterval(countdownTimer);
-          countdownElement.style.display = 'none';
-          updateStatus("Redirecting to Google...");
-          
-          // Add a small delay for better UX
-          setTimeout(() => {
-            window.location.href = 'https://www.google.com';
-          }, 500);
-        }
-      }, 1000);
-    }
-
-    function stopCountdown() {
-      if (countdownTimer) {
-        clearInterval(countdownTimer);
-        countdownTimer = null;
-      }
-      const countdownElement = document.getElementById('countdown');
-      countdownElement.style.display = 'none';
-      countdownElement.style.background = 'linear-gradient(135deg, #ff6b6b, #ee5a24)';
-      countdownStarted = false;
-    }
-
-    function showError(error) {
-      document.getElementById('loading').innerHTML = `
-        <div class="error-content">
-          <h3>⚠️ WebAR Setup Error</h3>
-          <p><strong>Common solutions:</strong></p>
-          <ul>
-            <li>📷 Enable camera permissions in your browser</li>
-            <li>🔒 Use HTTPS (required for camera access)</li>
-            <li>📱 Try on a mobile device for better AR experience</li>
-            <li>🎯 Create a targets.mind file using MindAR tools</li>
-            <li>🌐 Check internet connection for library loading</li>
-          </ul>
-          <p><strong>Error details:</strong> ${error.message}</p>
-          <button class="demo-mode" onclick="startDemoMode()">
-            🚀 Try Demo Mode (No Camera)
-          </button>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Unity WebGL Player | National education summit 2025</title>
+    <link rel="shortcut icon" href="TemplateData/favicon.ico">
+    <link rel="stylesheet" href="TemplateData/style.css">
+    <link rel="manifest" href="manifest.webmanifest">
+  </head>
+  <body>
+    <div id="unity-container">
+      <canvas id="unity-canvas" width=1320 height=2868 tabindex="-1"></canvas>
+      <div id="unity-loading-bar">
+        <div id="unity-logo"></div>
+        <div id="unity-progress-bar-empty">
+          <div id="unity-progress-bar-full"></div>
         </div>
-      `;
-    }
-
-    // Demo mode without camera for testing
-    function startDemoMode() {
-      document.getElementById('loading').style.display = 'none';
-      updateStatus("Demo mode - Simulating target detection");
-      
-      // Simulate target found after 2 seconds
-      setTimeout(() => {
-        isTargetFound = true;
-        updateStatus("Demo: Target detected! Starting countdown");
-        if (!countdownStarted) {
-          startCountdown();
-          countdownStarted = true;
+      </div>
+      <div id="unity-warning"> </div>
+    </div>
+    <script>
+      window.addEventListener("load", function () {
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.register("ServiceWorker.js");
         }
-      }, 2000);
-    }
+      });
 
-    // Initialize AR when page loads
-    window.addEventListener('load', () => {
-      // Add a small delay to ensure all libraries are loaded
-      setTimeout(() => {
-        initAR();
-      }, 500);
-    });
+      var container = document.querySelector("#unity-container");
+      var canvas = document.querySelector("#unity-canvas");
+      var loadingBar = document.querySelector("#unity-loading-bar");
+      var progressBarFull = document.querySelector("#unity-progress-bar-full");
+      var warningBanner = document.querySelector("#unity-warning");
 
-    // Handle window resize for better responsiveness
-    window.addEventListener('resize', () => {
-      if (mindarThree && mindarThree.renderer) {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        
-        mindarThree.renderer.setSize(width, height);
-        if (mindarThree.camera) {
-          mindarThree.camera.aspect = width / height;
-          mindarThree.camera.updateProjectionMatrix();
+      // Shows a temporary message banner/ribbon for a few seconds, or
+      // a permanent error message on top of the canvas if type=='error'.
+      // If type=='warning', a yellow highlight color is used.
+      // Modify or remove this function to customize the visually presented
+      // way that non-critical warnings and error messages are presented to the
+      // user.
+      function unityShowBanner(msg, type) {
+        function updateBannerVisibility() {
+          warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
         }
+        var div = document.createElement('div');
+        div.innerHTML = msg;
+        warningBanner.appendChild(div);
+        if (type == 'error') div.style = 'background: red; padding: 10px;';
+        else {
+          if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
+          setTimeout(function() {
+            warningBanner.removeChild(div);
+            updateBannerVisibility();
+          }, 5000);
+        }
+        updateBannerVisibility();
       }
-    });
 
-    // Handle page visibility for better performance
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        stopCountdown();
+      var buildUrl = "Build";
+      var loaderUrl = buildUrl + "/WebGL game build.loader.js";
+      var config = {
+        dataUrl: buildUrl + "/WebGL game build.data.unityweb",
+        frameworkUrl: buildUrl + "/WebGL game build.framework.js.unityweb",
+        codeUrl: buildUrl + "/WebGL game build.wasm.unityweb",
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: "NextXR",
+        productName: "National education summit 2025",
+        productVersion: "1",
+        showBanner: unityShowBanner,
+      };
+
+      // By default Unity keeps WebGL canvas render target size matched with
+      // the DOM size of the canvas element (scaled by window.devicePixelRatio)
+      // Set this to false if you want to decouple this synchronization from
+      // happening inside the engine, and you would instead like to size up
+      // the canvas DOM size and WebGL render target sizes yourself.
+      // config.matchWebGLToCanvasSize = false;
+
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        // Mobile device style: fill the whole browser client area with the game canvas:
+        var meta = document.createElement('meta');
+        meta.name = 'viewport';
+        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
+        document.getElementsByTagName('head')[0].appendChild(meta);
       }
-    });
-  </script>
-</body>
+
+      loadingBar.style.display = "block";
+
+      var script = document.createElement("script");
+      script.src = loaderUrl;
+      script.onload = () => {
+        createUnityInstance(canvas, config, (progress) => {
+          progressBarFull.style.width = 100 * progress + "%";
+        }).then((unityInstance) => {
+          loadingBar.style.display = "none";
+        }).catch((message) => {
+          alert(message);
+        });
+      };
+      document.body.appendChild(script);
+    </script>
+  </body>
 </html>
